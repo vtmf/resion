@@ -41,7 +41,7 @@ exports.wizard =
 		resin.auth.isLoggedIn().then (isLoggedIn) ->
 			return if isLoggedIn
 			console.info('Looks like you\'re not logged in yet!')
-			console.info('Lets go through a quick wizard to get you started.\n')
+			console.info("Let's go through a quick wizard to get you started.\n")
 			return runCommand('login')
 		.then ->
 			return if params.name?

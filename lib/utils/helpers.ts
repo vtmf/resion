@@ -140,7 +140,7 @@ export function getArchAndDeviceType(
 export function getApplication(applicationName: string) {
 	// Check for an app of the form `user/application`, and send
 	// that off to a special handler (before importing any modules)
-	const match = /(\w+)\/(\w+)/.exec(applicationName);
+	const match = applicationName.split('/');
 
 	const extraOptions = {
 		$expand: {
@@ -150,10 +150,10 @@ export function getApplication(applicationName: string) {
 		},
 	};
 
-	if (match) {
+	if (match.length > 1) {
 		return resin.models.application.getAppByOwner(
-			match[2],
 			match[1],
+			match[0],
 			extraOptions,
 		);
 	}

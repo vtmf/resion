@@ -16,7 +16,6 @@ limitations under the License.
 import * as Bluebird from 'bluebird';
 import { CommandDefinition } from 'capitano';
 import { stripIndent } from 'common-tags';
-import * as resin from 'resin-sdk';
 
 interface Args {
 	deviceIp?: string;
@@ -51,6 +50,7 @@ export const join: CommandDefinition<Args, Options> = {
 	primary: true,
 
 	async action(params, options, done) {
+		const resin = await import('resin-sdk');
 		const Logger = await import('../utils/logger');
 		const promote = await import('../utils/promote');
 		const sdk = resin.fromSharedOptions();

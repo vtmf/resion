@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import { stripIndent } from 'common-tags';
 
 import * as Bluebird from 'bluebird';
-import * as resin from 'resin-sdk';
+import { ResinSDK, Application } from 'resin-sdk';
 import TypedError = require('typed-error');
 
 import Logger = require('./logger');
@@ -12,7 +12,7 @@ import { getSubShellCommand, runCommand } from './helpers';
 
 export async function join(
 	logger: Logger,
-	sdk: resin.ResinSDK,
+	sdk: ResinSDK,
 	deviceHostnameOrIp?: string,
 	appName?: string,
 ): Promise<void> {
@@ -20,7 +20,7 @@ export async function join(
 	const isLoggedIn = await sdk.auth.isLoggedIn();
 	if (!isLoggedIn) {
 		logger.logInfo("Looks like you're not logged in yet!");
-		logger.logInfo('Lets go through a quick wizard to get you started.\n');
+		logger.logInfo("Let's go through a quick wizard to get you started.\n");
 		await runCommand('login');
 	}
 
@@ -51,7 +51,7 @@ export async function join(
 
 export async function leave(
 	logger: Logger,
-	sdk: resin.ResinSDK,
+	_sdk: ResinSDK,
 	deviceHostnameOrIp?: string,
 ): Promise<void> {
 	logger.logDebug('Determining device...');
@@ -63,8 +63,7 @@ export async function leave(
 	await deconfigure(deviceIp);
 	logger.logDebug('All done.');
 
-	const platformUrl = await sdk.settings.get('resinUrl');
-	logger.logSuccess(`Device successfully left ${platformUrl}.`);
+	logger.logSuccess('Device successfully left the platform.');
 }
 
 export class ExecError extends TypedError {
@@ -149,6 +148,9 @@ async function execCommand(
 }
 
 async function configure(deviceIp: string, config: any): Promise<void> {
+	// Passing the JSON is slightly tricky due to the many layers of indirection
+	// so we just base64-encode it here and decode it at the other end, when invoking
+	// os-config.
 	const json = JSON.stringify(config);
 	const b64 = Buffer.from(json).toString('base64');
 	const str = `"$(base64 -d <<< ${b64})"`;
@@ -215,10 +217,10 @@ async function getOrSelectLocalDevice(deviceIp?: string): Promise<string> {
 }
 
 async function getOrSelectApplication(
-	sdk: resin.ResinSDK,
+	sdk: ResinSDK,
 	deviceType: string,
 	appName?: string,
-): Promise<resin.Application> {
+): Promise<Application> {
 	const _ = await import('lodash');
 	const form = await import('resin-cli-form');
 	const { selectFromList } = await import('../utils/patterns');
@@ -234,7 +236,8 @@ async function getOrSelectApplication(
 		if (applications.length === 0) {
 			const shouldCreateApp = await form.ask({
 				message:
-					'You have no applications this device can join.\n  Would you like to create one now?',
+					'You have no applications this device can join.\n' +
+					'Would you like to create one now?',
 				type: 'confirm',
 				default: true,
 			});
@@ -254,22 +257,24 @@ async function getOrSelectApplication(
 	options.$filter = { app_name: appName };
 
 	// Check for an app of the form `user/application` and update the API query.
-	const match = appName.match(/(\w+)\/(\w+)/);
-	if (match) {
+	const match = appName.split('/');
+	if (match.length > 1) {
 		// These will match at most one app, so we'll return early.
-		options.$expand.user.$filter = { username: match[1] };
-		options.$filter.app_name = match[2];
+		options.$expand.user.$filter = { username: match[0] };
+		options.$filter.app_name = match[1];
 	}
 
 	// Fetch all applications with the given name that are accessible to the user
-	const applications = await sdk.pine.get<resin.Application>({
+	const applications = await sdk.pine.get<Application>({
 		resource: 'application',
 		options,
 	});
 
 	if (applications.length === 0) {
 		const shouldCreateApp = await form.ask({
-			message: `No application found with name "${appName}".\n  Would you like to create it now?`,
+			message:
+				`No application found with name "${appName}".\n` +
+				'Would you like to create it now?',
 			type: 'confirm',
 			default: true,
 		});
@@ -303,10 +308,10 @@ async function getOrSelectApplication(
 }
 
 async function createApplication(
-	sdk: resin.ResinSDK,
+	sdk: ResinSDK,
 	deviceType: string,
 	name?: string,
-): Promise<resin.Application> {
+): Promise<Application> {
 	const form = await import('resin-cli-form');
 	const validation = await import('./validation');
 	const patterns = await import('./patterns');
@@ -336,7 +341,7 @@ async function createApplication(
 					return resolve(appName);
 				}
 			} catch (err) {
-				reject(err);
+				return reject(err);
 			}
 		}
 	});
@@ -347,10 +352,7 @@ async function createApplication(
 	});
 }
 
-async function generateApplicationConfig(
-	sdk: resin.ResinSDK,
-	app: resin.Application,
-) {
+async function generateApplicationConfig(sdk: ResinSDK, app: Application) {
 	const form = await import('resin-cli-form');
 	const {
 		generateApplicationConfig: configGen,
