@@ -1,14 +1,10 @@
-import { spawn } from 'child_process';
-
 import { stripIndent } from 'common-tags';
-
-import * as Bluebird from 'bluebird';
 import { ResinSDK, Application } from 'resin-sdk';
-import TypedError = require('typed-error');
 
 import Logger = require('./logger');
 
-import { getSubShellCommand, runCommand } from './helpers';
+import { runCommand } from './helpers';
+import { exec, execBuffered } from './ssh';
 
 export async function join(
 	logger: Logger,
@@ -64,66 +60,6 @@ export async function leave(
 	logger.logDebug('All done.');
 
 	logger.logSuccess('Device successfully left the platform.');
-}
-
-export class ExecError extends TypedError {
-	public cmd: string;
-	public exitCode: number;
-
-	constructor(cmd: string, exitCode: number) {
-		super(`Command '${cmd}' failed with error: ${exitCode}`);
-		this.cmd = cmd;
-		this.exitCode = exitCode;
-	}
-}
-
-async function exec(
-	deviceIp: string,
-	cmd: string,
-	stdout?: NodeJS.WritableStream,
-): Promise<void> {
-	const command = `ssh \
-		-t \
-		-p 22222 \
-		-o LogLevel=ERROR \
-		-o StrictHostKeyChecking=no \
-		-o UserKnownHostsFile=/dev/null \
-		root@${deviceIp} \
-		${cmd}`;
-
-	const stdio = ['ignore', stdout ? 'pipe' : 'inherit', 'ignore'];
-	const { program, args } = getSubShellCommand(command);
-
-	const exitCode = await new Bluebird<number>((resolve, reject) => {
-		const ps = spawn(program, args, { stdio })
-			.on('error', reject)
-			.on('close', resolve);
-
-		if (stdout) {
-			ps.stdout.pipe(stdout);
-		}
-	});
-	if (exitCode != 0) {
-		throw new ExecError(cmd, exitCode);
-	}
-}
-
-async function execBuffered(
-	deviceIp: string,
-	cmd: string,
-	enc?: string,
-): Promise<string> {
-	const through = await import('through2');
-	const buffer: string[] = [];
-	await exec(
-		deviceIp,
-		cmd,
-		through(function(data, _enc, cb) {
-			buffer.push(data.toString(enc));
-			cb();
-		}),
-	);
-	return buffer.join('');
 }
 
 async function execCommand(
