@@ -31,7 +31,11 @@ export async function join(
 
 	logger.logDebug('Determining application...');
 	const app = await getOrSelectApplication(sdk, deviceType, appName);
-	logger.logDebug(`Using application: ${app.app_name}`);
+	logger.logDebug(`Using application: ${app.app_name} (${app.device_type})`);
+	if (app.device_type != deviceType) {
+		logger.logDebug(`Forcing device type to: ${deviceType}`);
+		app.device_type = deviceType;
+	}
 
 	logger.logDebug('Generating application config...');
 	const config = await generateApplicationConfig(sdk, app);
@@ -161,9 +165,19 @@ async function getOrSelectApplication(
 	const form = await import('resin-cli-form');
 	const { selectFromList } = await import('../utils/patterns');
 
+	const allDeviceTypes = await sdk.models.config.getDeviceTypes();
+	const deviceTypeManifest = _.find(allDeviceTypes, { slug: deviceType });
+	if (!deviceTypeManifest) {
+		throw new Error(`"${deviceType}" is not a valid device type`);
+	}
+	const compatibleDeviceTypes = _(allDeviceTypes)
+		.filter({ arch: deviceTypeManifest.arch })
+		.map(type => type.slug)
+		.value();
+
 	const options: any = {
 		$expand: { user: { $select: ['username'] } },
-		$filter: { device_type: deviceType },
+		$filter: { device_type: { $in: compatibleDeviceTypes } },
 	};
 
 	if (!appName) {
@@ -222,8 +236,8 @@ async function getOrSelectApplication(
 
 	// We've found at least one app with the given name.
 	// Filter out apps for non-matching device types and see what we're left with.
-	const validApplications = applications.filter(
-		app => app.device_type === deviceType,
+	const validApplications = applications.filter(app =>
+		_.includes(compatibleDeviceTypes, app.device_type),
 	);
 
 	if (validApplications.length === 1) {
@@ -290,9 +304,7 @@ async function createApplication(
 
 async function generateApplicationConfig(sdk: ResinSDK, app: Application) {
 	const form = await import('resin-cli-form');
-	const {
-		generateApplicationConfig: configGen,
-	} = await import('../utils/config');
+	const { generateApplicationConfig: configGen } = await import('./config');
 
 	const manifest = await sdk.models.device.getManifestBySlug(app.device_type);
 	const opts =
